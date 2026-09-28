@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from agent_core.text import slugify  # noqa: F401  (다른 모듈에서 여기서 가져다 씀)
+
 # 기본 목차. 에이전트는 이 id를 사용해 섹션을 작성하고,
 # 필요하면 목록에 없는 id로 추가 섹션(부록 등)을 만들 수 있다.
 STANDARD_SECTIONS: list[tuple[str, str]] = [
@@ -122,8 +124,3 @@ def _demote_headings(content: str) -> str:
         return "#" * max(level, 3) + match.group(2)
 
     return re.sub(r"^(#{1,6})(\s)", repl, content, flags=re.MULTILINE)
-
-
-def slugify(text: str) -> str:
-    slug = re.sub(r"[^\w가-힣-]+", "-", text.strip().lower()).strip("-")
-    return slug[:60] or "rfp"

@@ -4,19 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from anthropic import beta_tool
 
+from agent_core import NO_ANSWER, UserIO, make_ask_user_tool
+
 from .document import RFPDocument, slugify
 
-NO_ANSWER = "(응답 없음 — 합리적으로 가정하고 본문에 [가정] 표시)"
-
-
-class UserIO(Protocol):
-    def say(self, text: str) -> None: ...
-
-    def ask(self, prompt: str) -> str: ...
+__all__ = ["NO_ANSWER", "Workspace", "build_tools"]
 
 
 @dataclass
@@ -37,25 +32,11 @@ class Workspace:
 
 
 def build_tools(ws: Workspace) -> list:
-    @beta_tool
-    def ask_user(questions: list[str]) -> str:
-        """발주 담당자에게 RFP 작성에 필요한 정보를 묻는다. 관련 질문을 한 번에 묶어서 전달한다.
-
-        Args:
-            questions: 사용자에게 물어볼 질문 목록. 각 질문은 한 문장으로 구체적으로 쓴다.
-        """
-        questions = [q.strip() for q in questions if q and q.strip()]
-        if not questions:
-            return "질문이 비어 있습니다."
-        if not ws.interactive:
-            return "\n".join(f"Q{i}. {q}\nA{i}. {NO_ANSWER}" for i, q in enumerate(questions, 1))
-
-        ws.io.say("\n[추가 정보 요청] 모르는 항목은 엔터로 넘기면 에이전트가 가정해서 작성합니다.")
-        lines = []
-        for i, q in enumerate(questions, 1):
-            answer = ws.io.ask(f"Q{i}. {q}\n> ").strip()
-            lines.append(f"Q{i}. {q}\nA{i}. {answer or NO_ANSWER}")
-        return "\n".join(lines)
+    ask_user = make_ask_user_tool(
+        ws.io,
+        lambda: ws.interactive,
+        "발주 담당자에게 RFP 작성에 필요한 정보를 묻는다. 관련 질문을 한 번에 묶어서 전달한다.",
+    )
 
     @beta_tool
     def set_document_info(title: str, issuer: str = "") -> str:

@@ -1,20 +1,26 @@
 [project]
-name = "rfp-agent"
-version = "0.1.0"
-description = "대화형으로 요구사항을 수집해 제안요청서(RFP)를 작성하는 Claude 에이전트"
+name = "rfp-agents"
+version = "0.2.0"
+description = "RFP 작성 에이전트와 RFP 대응 Workday 제안서(PPTX) 작성 에이전트"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["anthropic>=1.8.0"]
+dependencies = [
+    "anthropic>=1.8.0",
+    "python-pptx>=1.0",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 
 [project.scripts]
 rfp-agent = "rfp_agent.cli:main"
+proposal-agent = "proposal_agent.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["rfp_agent"]
+packages = ["agent_core", "rfp_agent", "proposal_agent"]

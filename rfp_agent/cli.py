@@ -7,7 +7,8 @@ import os
 import sys
 from pathlib import Path
 
-import anthropic
+from agent_core.cli import run_session
+from agent_core.console import ConsoleIO, read_multiline
 
 from .agent import DEFAULT_EFFORT, DEFAULT_MODEL, RFPAgent
 from .document import RFPDocument
@@ -15,28 +16,6 @@ from .tools import Workspace
 
 # 참고 자료가 이보다 크면 경고만 하고 그대로 전달한다(모델 컨텍스트는 1M 토큰).
 LARGE_REFERENCE_CHARS = 200_000
-
-
-class ConsoleIO:
-    def say(self, text: str) -> None:
-        print(text, flush=True)
-
-    def ask(self, prompt: str) -> str:
-        try:
-            return input(prompt)
-        except EOFError:
-            return ""
-
-
-def read_multiline(io: ConsoleIO, prompt: str) -> str:
-    io.say(prompt)
-    lines = []
-    while True:
-        line = io.ask("")
-        if not line.strip():
-            break
-        lines.append(line)
-    return "\n".join(lines)
 
 
 def build_first_message(brief: str, references: list[Path]) -> str:
@@ -98,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     agent = RFPAgent(workspace, model=args.model, effort=args.effort)
 
-    try:
+    def session() -> None:
         agent.send(build_first_message(brief, args.reference))
         while not args.auto:
             if workspace.finalized:
@@ -107,23 +86,10 @@ def main(argv: list[str] | None = None) -> int:
             if not request:
                 break
             agent.send(request)
-    except KeyboardInterrupt:
-        io.say("\n중단했습니다.")
-    except anthropic.AuthenticationError:
-        print("인증 실패: ANTHROPIC_API_KEY 환경 변수를 확인하세요.", file=sys.stderr)
-        return 1
-    except anthropic.APIStatusError as e:
-        print(f"API 오류 ({e.status_code}): {e.message}", file=sys.stderr)
-        return 1
-    except anthropic.APIConnectionError:
-        print("네트워크 오류: Claude API에 연결할 수 없습니다.", file=sys.stderr)
-        return 1
-    except TypeError as e:
-        # 자격 증명이 전혀 없으면 SDK가 요청 직전에 TypeError를 낸다.
-        if "authentication method" not in str(e):
-            raise
-        print("API 키가 없습니다: ANTHROPIC_API_KEY 환경 변수를 설정하세요.", file=sys.stderr)
-        return 1
+
+    code = run_session(session, io)
+    if code:
+        return code
 
     if workspace.document.sections:
         path = workspace.document.save(workspace.path())
