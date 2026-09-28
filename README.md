@@ -13,6 +13,8 @@ pip install -e ".[dev]"
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+영문 스펙(다른 Claude·개발자에게 전달용): [`docs/proposal-agent-spec.md`](docs/proposal-agent-spec.md)
+
 ---
 
 # Workday 제안서 에이전트
