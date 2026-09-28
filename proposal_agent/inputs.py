@@ -7,8 +7,10 @@ from pathlib import Path
 
 TEXT_SUFFIXES = {".md", ".txt", ".csv", ".tsv", ".json"}
 SUPPORTED = TEXT_SUFFIXES | {".pdf", ".docx", ".pptx", ".xlsx"}
-# 요청 한 건의 최대 크기는 32MB. 여유를 두고 PDF 합계를 제한한다.
+# 요청 한 건의 최대 크기는 32MB. 여유를 두고 원본 그대로 보내는 PDF 합계를 제한한다.
 MAX_PDF_BYTES = 24 * 1024 * 1024
+# 페이지당 평균 글자 수가 이보다 적으면 스캔 문서로 보고 원본 PDF로 보낸다.
+MIN_CHARS_PER_PAGE = 40
 
 
 class InputError(ValueError):
@@ -33,8 +35,18 @@ def collect_files(paths: list[Path]) -> list[Path]:
     return files
 
 
-def document_block(path: Path, context: str) -> dict:
+def document_block(path: Path, context: str, pdf_as_text: bool = False) -> dict:
+    """파일 하나를 document 블록으로 만든다.
+
+    RFP PDF는 표·서식을 살리려고 원본 그대로 보내고, 분량이 많은 솔루션 자료 PDF는
+    pdf_as_text=True로 페이지 번호를 붙인 텍스트로 보내 토큰을 아낀다.
+    """
     suffix = path.suffix.lower()
+    if suffix == ".pdf" and pdf_as_text:
+        text = pdf_text(path)
+        if text is not None:
+            source = {"type": "text", "media_type": "text/plain", "data": text}
+            return {"type": "document", "source": source, "title": path.name, "context": context}
     if suffix == ".pdf":
         data = base64.standard_b64encode(path.read_bytes()).decode("ascii")
         source = {"type": "base64", "media_type": "application/pdf", "data": data}
@@ -46,20 +58,38 @@ def document_block(path: Path, context: str) -> dict:
     return {"type": "document", "source": source, "title": path.name, "context": context}
 
 
-def build_blocks(groups: list[tuple[str, list[Path]]]) -> list[dict]:
-    """(설명, 파일 목록) 묶음을 document 블록 목록으로 만든다."""
+def build_blocks(groups: list[tuple[str, list[Path], bool]]) -> list[dict]:
+    """(설명, 파일 목록, PDF를 텍스트로 보낼지) 묶음을 document 블록 목록으로 만든다."""
     blocks = []
     pdf_bytes = 0
-    for context, files in groups:
+    for context, files, pdf_as_text in groups:
         for path in files:
-            if path.suffix.lower() == ".pdf":
+            block = document_block(path, context, pdf_as_text)
+            if block["source"]["type"] == "base64":
                 pdf_bytes += path.stat().st_size
                 if pdf_bytes > MAX_PDF_BYTES:
                     raise InputError(
-                        "PDF 합계가 24MB를 넘습니다. 필요한 부분만 남기거나 텍스트(DOCX/MD)로 바꿔 주세요."
+                        "원본으로 보내는 PDF 합계가 24MB를 넘습니다. 필요한 부분만 남기거나 텍스트(DOCX/MD)로 바꿔 주세요."
                     )
-            blocks.append(document_block(path, context))
+            blocks.append(block)
     return blocks
+
+
+def pdf_text(path: Path) -> str | None:
+    """PDF에서 페이지 번호를 붙인 텍스트를 뽑는다. 스캔 문서처럼 글자가 거의 없으면 None."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    pages = []
+    total = 0
+    for i, page in enumerate(reader.pages, 1):
+        text = (page.extract_text() or "").strip()
+        total += len(text)
+        if text:
+            pages.append(f"[p.{i}]\n{text}")
+    if not reader.pages or total < MIN_CHARS_PER_PAGE * len(reader.pages):
+        return None
+    return "\n\n".join(pages)
 
 
 def extract_text(path: Path) -> str:

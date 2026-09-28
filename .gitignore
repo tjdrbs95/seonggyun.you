@@ -9,5 +9,6 @@ output/
 # 회사 템플릿·고객 자료는 커밋하지 않는다
 templates/*.pptx
 templates/*.potx
-knowledge/
+knowledge/*
+!knowledge/README.md
 rfp/

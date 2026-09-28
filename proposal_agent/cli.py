@@ -19,6 +19,8 @@ from .render import DeckRenderer
 from .tools import Workspace
 
 DEFAULT_TEMPLATE = Path("templates/workday_template.pptx")
+# 이 폴더가 있으면 -k 없이도 솔루션 자료로 읽는다.
+DEFAULT_KNOWLEDGE = Path("knowledge")
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -29,7 +31,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("rfp", nargs="*", type=Path, help="RFP 파일(PDF, DOCX, XLSX, PPTX, MD). 여러 개 가능")
     parser.add_argument(
         "-k", "--knowledge", action="append", type=Path, default=[],
-        help="Workday 솔루션 자료 파일 또는 폴더(여러 번 지정 가능)",
+        help=f"Workday 솔루션 자료 파일 또는 폴더(여러 번 지정 가능). 생략하면 {DEFAULT_KNOWLEDGE}/ 폴더를 읽음",
     )
     parser.add_argument(
         "-r", "--reference", action="append", type=Path, default=[],
@@ -41,6 +43,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("-o", "--output", type=Path, help="결과 파일 경로(.pptx). 기본: output/<제안서제목>.pptx")
     parser.add_argument("--output-dir", type=Path, default=Path("output"))
     parser.add_argument("--auto", action="store_true", help="질문 없이 작성합니다. 모르는 정보는 [확인 필요]로 남습니다.")
+    parser.add_argument(
+        "--native-pdf", action="store_true",
+        help="솔루션·참고 자료 PDF도 텍스트 추출 없이 원본 그대로 보냅니다(그림까지 읽지만 토큰이 많이 듦).",
+    )
     parser.add_argument(
         "--render", type=Path, metavar="DECK_JSON",
         help="에이전트 없이 저장된 덱(.deck.json)을 템플릿으로 다시 렌더링합니다.",
@@ -83,16 +89,25 @@ def main(argv: list[str] | None = None) -> int:
     if not args.rfp:
         print("RFP 파일을 지정하세요. 예: python -m proposal_agent rfp.pdf -k knowledge/", file=sys.stderr)
         return 2
+    knowledge = args.knowledge or ([DEFAULT_KNOWLEDGE] if DEFAULT_KNOWLEDGE.is_dir() else [])
+    as_text = not args.native_pdf
     try:
+        rfp_files, knowledge_files, reference_files = (
+            collect_files(args.rfp), collect_files(knowledge), collect_files(args.reference)
+        )
         blocks = build_blocks([
-            ("RFP", collect_files(args.rfp)),
-            ("Workday 솔루션 자료", collect_files(args.knowledge)),
-            ("참고 자료", collect_files(args.reference)),
+            ("RFP", rfp_files, False),
+            ("Workday 솔루션 자료", knowledge_files, as_text),
+            ("참고 자료", reference_files, as_text),
         ])
     except InputError as e:
         print(e, file=sys.stderr)
         return 2
-    io.say(f"입력 문서 {len(blocks)}건을 읽었습니다. 제안서 작성을 시작합니다.")
+    io.say(
+        f"RFP {len(rfp_files)}건, 솔루션 자료 {len(knowledge_files)}건, 참고 자료 {len(reference_files)}건을 읽었습니다."
+    )
+    if not knowledge_files:
+        io.say("[주의] 솔루션 자료가 없습니다. knowledge/ 폴더에 Workday 제안서·솔루션 설명 자료를 넣으면 근거가 정확해집니다.")
 
     workspace = Workspace(
         deck=ProposalDeck(),

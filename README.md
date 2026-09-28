@@ -25,15 +25,25 @@ export ANTHROPIC_API_KEY=sk-ant-...
 4. **슬라이드 작성** — RFP가 지정한 목차(없으면 기본 목차)로 표지 → 목차 → 장별 슬라이드 → 마무리. 모든 슬라이드에 헤드 메시지, 대응 요구사항 ID, 발표자 노트
 5. **검토·저장** — 모든 요구사항이 어느 슬라이드에서 다뤄졌는지 확인 후 저장. 부록에 **요구사항 대응표**(ID · 요구사항 · 대응 유형 · 대응 방안 · 페이지)를 자동으로 붙임
 
-### 준비: 템플릿
+### 준비 1: 솔루션 자료 (`knowledge/`)
+
+Workday 표준 제안서(예: `Workday Proposal for 한국 고객_30.09.2026.pdf`, "Workday 솔루션 설명문서")와 제품 자료를 `knowledge/` 폴더에 넣어 두세요. `-k` 없이 실행해도 이 폴더를 자동으로 읽고, 에이전트는 이 자료를 근거로 기능·AI·보안·서비스 내용을 씁니다.
+
+- PDF는 페이지 번호(`[p.N]`)를 붙인 텍스트로 추출해 보냅니다. 150쪽 분량도 원본 PDF로 보낼 때보다 토큰이 크게 줄고, 슬라이드 노트에 `근거: 파일명 p.N` 으로 출처가 남습니다. 그림 속 글자까지 읽혀야 하면 `--native-pdf` 를 쓰세요(스캔 PDF는 자동으로 원본 전송).
+- 표준 제안서에 남은 병합 필드(`[[ShrtCmpNm…]]`, `한국 고객's`)는 실제 고객사명으로 바꿔 씁니다.
+- 한국 급여는 Workday 자체 급여 지원 국가가 아니므로 파트너 연동으로, 채용·학습·시간 관리·AI 에이전트 등은 별도 구독 여부를 구분해 제안합니다.
+
+> 이 저장소는 **공개(public)** 입니다. `knowledge/`, `templates/`, `rfp/`, `output/` 의 파일은 `.gitignore` 로 커밋되지 않게 막아 두었으니, 고객·회사 기밀 자료를 다른 경로에 두고 커밋하지 않도록 주의하세요.
+
+### 준비 2: 템플릿
 
 Workday Corporate PowerPoint Template(Drive `Workday Presales` 폴더)을 `templates/workday_template.pptx` 로 저장하세요. 회사 문서이므로 git에는 올라가지 않습니다. 다른 디자인은 `-t 다른템플릿.pptx` 로 지정하면 그 템플릿의 레이아웃·테마 색·글꼴을 따라갑니다.
 
 ### 실행
 
 ```bash
-# RFP + Workday 솔루션 자료 폴더
-python -m proposal_agent rfp/○○그룹_RFP.pdf -k knowledge/
+# RFP만 지정하면 knowledge/ 의 솔루션 자료를 함께 읽음
+python -m proposal_agent rfp/○○그룹_RFP.pdf
 
 # 요구사항 목록이 엑셀로 따로 있는 경우, 참고 자료와 추가 지시까지
 python -m proposal_agent rfp/본문.pdf rfp/요구사항.xlsx -k knowledge/ \
@@ -62,7 +72,8 @@ python -m proposal_agent --render output/제안서.deck.json -t templates/다른
 
 | 형식 | 처리 |
 |---|---|
-| PDF | 원본 그대로 Claude에 전달(표·이미지 포함 인식). 합계 24MB 이하 |
+| PDF (RFP) | 원본 그대로 Claude에 전달(표·이미지 포함 인식). 원본 전송 합계 24MB 이하 |
+| PDF (솔루션·참고 자료) | 페이지 번호를 붙인 텍스트로 추출(`--native-pdf` 면 원본 전송) |
 | DOCX / PPTX / XLSX | 본문·표·노트 텍스트를 추출 |
 | MD / TXT / CSV | 그대로 |
 | HWP | 지원 안 함 → PDF로 변환해서 넣으세요 |

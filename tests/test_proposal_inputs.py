@@ -34,10 +34,53 @@ def test_extracts_docx_xlsx_pptx_md(tmp_path):
     assert len(collect_files([tmp_path])) == 4
 
 
+def make_pdf(path, pages):
+    """글자가 들어 있는 최소 PDF를 만든다(Helvetica, ASCII 텍스트)."""
+    objs = ["<< /Type /Catalog /Pages 2 0 R >>", None,
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    kids = []
+    for text in pages:
+        stream = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode()
+        objs.append(f"<< /Length {len(stream)} >>\nstream\n{stream.decode()}\nendstream")
+        content_id = len(objs)
+        objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                    f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_id} 0 R >>")
+        kids.append(f"{len(objs)} 0 R")
+    objs[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>"
+    out = b"%PDF-1.4\n"
+    offsets = []
+    for i, body in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n{body}\nendobj\n".encode()
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += "".join(f"{o:010d} 00000 n \n" for o in offsets).encode()
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF".encode()
+    path.write_bytes(out)
+
+
+def test_solution_pdf_becomes_page_marked_text(tmp_path):
+    pdf = tmp_path / "solution.pdf"
+    make_pdf(pdf, ["Workday Payroll is available in the US and Canada.",
+                   "Global Payroll Connect integrates partner payroll providers."])
+    [block] = build_blocks([("Workday 솔루션 자료", [pdf], True)])
+    assert block["source"]["type"] == "text"
+    data = block["source"]["data"]
+    assert data.startswith("[p.1]\nWorkday Payroll")
+    assert "[p.2]\nGlobal Payroll Connect" in data
+
+
+def test_scanned_pdf_falls_back_to_native(tmp_path):
+    pdf = tmp_path / "scan.pdf"
+    make_pdf(pdf, ["x", "y"])  # 페이지당 글자가 거의 없음 → 스캔 문서로 간주
+    [block] = build_blocks([("Workday 솔루션 자료", [pdf], True)])
+    assert block["source"]["type"] == "base64"
+
+
 def test_pdf_becomes_base64_document(tmp_path):
     pdf = tmp_path / "rfp.pdf"
     pdf.write_bytes(b"%PDF-1.4 test")
-    [block] = build_blocks([("RFP", [pdf])])
+    [block] = build_blocks([("RFP", [pdf], False)])
     assert block["source"]["media_type"] == "application/pdf"
     assert base64.b64decode(block["source"]["data"]) == b"%PDF-1.4 test"
     assert block["context"] == "RFP" and block["title"] == "rfp.pdf"
